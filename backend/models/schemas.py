@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 class Paper(BaseModel):
@@ -40,6 +40,7 @@ class AnalysisResult(BaseModel):
     trends: List[Trend]
     summary: str
     future_directions: List[str]
+    semantic_gaps: Optional[List[Dict[str, Any]]] = None
 
 
 class SearchResponse(BaseModel):

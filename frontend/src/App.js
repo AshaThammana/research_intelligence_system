@@ -360,16 +360,23 @@ function InsightsPanel({ analysis }) {
         {/* Research Gaps */}
         <div style={styles.insightSection}>
           <div style={styles.insightSectionTitle}>Research Gaps Detected</div>
-          {analysis.gaps.length === 0 ? (
-            <div style={{ fontSize: 13, color: '#4a4a6a' }}>No significant gaps detected.</div>
-          ) : (
-            analysis.gaps.map((g, i) => (
+          {(() => {
+            const gapsToShow = analysis.semantic_gaps && analysis.semantic_gaps.length > 0 ? analysis.semantic_gaps : analysis.gaps;
+            if (gapsToShow.length === 0) {
+              return <div style={{ fontSize: 13, color: '#4a4a6a' }}>No significant gaps detected.</div>;
+            }
+            return gapsToShow.map((g, i) => (
               <div key={i} style={styles.gapItem}>
-                <div style={styles.gapArea}>{g.area}</div>
-                <div style={styles.gapDesc}>{g.description}</div>
+                <div style={styles.gapArea}>
+                  {g.concept || g.area}
+                  <span style={g.status === 'covered' ? { color: '#4ade80', fontSize: '12px', fontWeight: '500' } : { color: '#f87171', fontSize: '12px', fontWeight: '500' }}>
+                    ({g.status === 'covered' ? 'Covered' : 'Research Gap'} score: {(g.score || 0).toFixed(2)})
+                  </span>
+                </div>
+                {g.description && <div style={styles.gapDesc}>{g.description}</div>}
               </div>
-            ))
-          )}
+            ));
+          })()}
         </div>
 
         {/* Trends */}

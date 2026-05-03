@@ -117,14 +117,59 @@ def refine_query_rules(raw_query: str) -> Tuple[str, List[str]]:
         if abbrev in query and expansion not in query:
             query = query.replace(abbrev, expansion)
 
-    # Extract key noun phrases (simple heuristic)
-    topics = extract_topics(query)
+    # NEW: Keyword-specific expansions (append natural phrases)
+    expanded_terms = []
+    query_lower = query  # already lowercased
+
+    if "federated learning" in query_lower:
+        expanded_terms.extend([
+            "secure aggregation",
+            "privacy preserving methods",
+            "differential privacy"
+        ])
+    if "privacy" in query_lower:
+        expanded_terms.extend([
+            "data protection",
+            "differential privacy",
+            "confidential computing"
+        ])
+    if "transformer" in query_lower:
+        expanded_terms.extend([
+            "self attention",
+            "bert gpt",
+            "sequence modeling"
+        ])
+
+    # Dedupe phrases and take top 3
+    expanded_terms = list(set(expanded_terms))[:3]
+
+    # Build refined query
+    refined = query
+    if expanded_terms:
+        refined += " " + " ".join(expanded_terms)
+
+    # Remove duplicate words across entire query
+    words = refined.split()
+    unique_words = []
+    seen = set()
+    for word in words:
+        if word not in seen:
+            unique_words.append(word)
+            seen.add(word)
+    refined = " ".join(unique_words)
+
+    # Limit to 20 words max
+    if len(refined.split()) > 20:
+        refined = " ".join(refined.split()[:20])
+
+    # Extract topics from final refined
+    topics = extract_topics(refined)
 
     # Format: title-case, hyphen for compound terms
-    if len(query) < 5:
-        query = raw_query  # fallback to original if too short
+    if len(refined) < 5:
+        refined = raw_query  # fallback to original if too short
 
-    return query.strip(), topics
+    return refined.strip(), topics
 
 
 def extract_topics(text: str) -> List[str]:

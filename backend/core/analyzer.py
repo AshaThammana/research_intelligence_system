@@ -10,8 +10,10 @@ Detects:
 
 import re
 from collections import Counter
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 from models.schemas import Paper, ResearchGap, Trend, AnalysisResult
+import numpy as np
+from core.embedder import get_embedder
 
 
 # ─────────────────────────────────────────────────
@@ -28,6 +30,14 @@ SUBTOPIC_PROBES = [
     ("cross-domain", ["transfer", "domain adaptation", "generalization"]),
     ("evaluation benchmarks", ["benchmark", "dataset", "evaluation", "metric"]),
     ("theoretical analysis", ["convergence", "bound", "proof", "theoretical"]),
+]
+
+RESEARCH_CONCEPTS = [
+    "privacy in machine learning",
+    "model explainability and interpretability",
+    "fairness and bias in AI",
+    "computational efficiency in machine learning",
+    "robustness and generalization in models"
 ]
 
 STOP_WORDS = {
@@ -182,6 +192,37 @@ def generate_future_directions(
     return directions[:5]
 
 
+def semantic_research_gaps(papers: List[Paper], threshold: float = 0.35) -> List[Dict[str, Any]]:
+    """Semantic research gap detection using embeddings."""
+    if not papers:
+        return [{"concept": c, "status": "research gap", "score": 0.0} for c in RESEARCH_CONCEPTS]
+
+    try:
+        embedder = get_embedder()
+        concept_embs = embedder.embed_batch(RESEARCH_CONCEPTS)
+        paper_texts = [f"Title: {p.title}. Abstract: {p.abstract}" for p in papers]
+        paper_embs = embedder.embed_batch(paper_texts)
+
+        # Efficient matrix cosine similarity: (n_papers, n_concepts)
+        scores_matrix = np.dot(paper_embs, concept_embs.T)
+        max_scores = np.max(scores_matrix, axis=0)
+
+        result = []
+        for i, concept in enumerate(RESEARCH_CONCEPTS):
+            max_score = float(max_scores[i])
+            print(f"{concept} → score: {max_score:.3f}")
+            status = "covered" if max_score >= threshold else "research gap"
+            result.append({
+                "concept": concept,
+                "status": status,
+                "score": max_score
+            })
+        return result
+    except Exception as e:
+        print(f"Semantic gap detection failed ({e}), using keyword fallback")
+        return []
+
+
 def summarize_papers(papers: List[Paper], query: str) -> str:
     """Generate a short summary of what the papers cover."""
     if not papers:
@@ -206,6 +247,7 @@ def analyze(papers: List[Paper], query: str, topics: List[str]) -> AnalysisResul
     """
     keywords = extract_keywords(papers)
     gaps = detect_gaps(papers, query)
+    semantic_gaps = semantic_research_gaps(papers)
     trends = analyze_trends(papers)
     future_directions = generate_future_directions(gaps, trends, keywords)
     summary = summarize_papers(papers, query)
@@ -214,7 +256,9 @@ def analyze(papers: List[Paper], query: str, topics: List[str]) -> AnalysisResul
         refined_query=query,
         key_themes=keywords[:8],
         gaps=gaps,
+        semantic_gaps=semantic_gaps,
         trends=trends,
         summary=summary,
         future_directions=future_directions,
     )
+
