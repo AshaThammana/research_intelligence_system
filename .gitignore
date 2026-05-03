@@ -1,0 +1,39 @@
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+
+# Virtual environment
+venv/
+.env
+.env.*
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Model / Cache files
+.cache/
+*.pt
+*.bin
+
+# FAISS index files
+*.index
+
+# Environment variables
+.env
