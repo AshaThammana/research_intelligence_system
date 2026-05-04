@@ -414,6 +414,7 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [themes, setThemes] = useState([]);
   const [error, setError] = useState(null);
 
   async function handleSearch(q) {
@@ -441,8 +442,10 @@ export default function App() {
       const data = await resp.json();
       console.log('API Response:', data);
       console.log('Papers length:', data.papers?.length || 0);
+      console.log('Themes length:', data.themes?.length || 0);
 
       setResult(data);
+      setThemes(data.themes || []);
 
     } catch (err) {
       setError(err.message || 'Could not connect to backend. Is FastAPI running on port 8000?');
@@ -543,6 +546,48 @@ export default function App() {
 
             {/* Insights Panel */}
             {result.analysis && <InsightsPanel analysis={result.analysis} />}
+
+            {/* Research Themes */}
+            <div style={styles.insightPanel}>
+              <div style={styles.sectionTitle}>Research Themes</div>
+              {themes.length === 0 ? (
+                <p style={{ color: '#6b6b8a', fontSize: 14, fontFamily: '"Space Mono", monospace' }}>
+                  No themes detected in results.
+                </p>
+              ) : (
+                themes.map((theme, index) => (
+                  <div key={index} style={{
+                    background: '#150f25',
+                    border: '1px solid #2d1f5c',
+                    borderRadius: 12,
+                    padding: '16px 20px',
+                    marginBottom: 12,
+                  }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, color: '#c8b8ff', marginBottom: 8 }}>
+                      {theme.theme_name || `Cluster ${theme.cluster_id}`} ({theme.size} papers)
+                    </h3>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {theme.keywords.map((kw, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            background: '#1a1230',
+                            border: '1px solid #3d2a7f',
+                            borderRadius: 20,
+                            padding: '4px 12px',
+                            fontSize: 13,
+                            color: '#a0a0c8',
+                            fontFamily: '"Space Mono", monospace',
+                          }}
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
 
             {/* Papers Grid */}
             {(!result.papers || result.papers.length === 0) ? (

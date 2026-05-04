@@ -21,6 +21,9 @@ from core.faiss_store import get_faiss_store
 from core.ranker import rank_papers
 from core.analyzer import analyze
 from core.semantic_search import semantic_search
+from core.reranker import rerank_papers
+from core.clustering import generate_research_themes
+from core.domain_filter import domain_filter_papers
 from data.paper_store import get_paper_store
 
 
@@ -77,10 +80,22 @@ async def search(request: QueryRequest):
     refined_query = agent_result["refined_query"]
     topics = agent_result["topics"]
 
+    # Strict query shaping for API retrieval
+    retrieval_query = refined_query
+    query_lower = refined_query.lower()
+
+    if "attention" in query_lower:
+        retrieval_query = refined_query + " NLP language model transformer BERT GPT"
+    elif "federated learning" in query_lower:
+        retrieval_query = refined_query + " secure aggregation distributed training privacy"
+
+    print("Retrieval query:", retrieval_query)
+    print("Refined query (internal):", refined_query)
+
     # Step 2: Fetch Papers
     ss_papers, arxiv_papers = await asyncio.gather(
-        fetch_semantic_scholar(refined_query, limit=10),
-        fetch_arxiv(refined_query, limit=10),
+        fetch_semantic_scholar(retrieval_query, limit=10),
+        fetch_arxiv(retrieval_query, limit=10),
         return_exceptions=False,
     )
     print("Semantic Scholar:", len(ss_papers))
@@ -89,9 +104,45 @@ async def search(request: QueryRequest):
     all_fetched = ss_papers + arxiv_papers
     total_fetched = len(all_fetched)
 
+    # High-quality source/citation filter
+    trusted_sources = [
+        "ieee", "acl", "springer", "elsevier",
+        "neurips", "icml", "cvpr"
+    ]
+    
+    def is_high_quality(paper):
+        source_lower = (paper.source or "").lower()
+        if any(s in source_lower for s in trusted_sources):
+            return True
+        if paper.citation_count and paper.citation_count >= 10:
+            return True
+        return False
+    
+    filtered_papers = [p for p in all_fetched if is_high_quality(p)]
+    
+    if len(filtered_papers) < 10:
+        filtered_papers = all_fetched
+        print("Quality filter skipped (fallback: too few papers)")
+    else:
+        print(f"Trusted papers filtered: {len(filtered_papers)}/{total_fetched}")
+
+    from core.paper_scorer import score_paper
+
+    scored_papers = [(p, score_paper(p)) for p in filtered_papers]
+    scored_papers.sort(key=lambda x: x[1], reverse=True)
+
+        # Relax filtering
+    filtered_papers = [p for p, s in scored_papers if s >= -1]
+
+        # Fallback if too few papers
+    if len(filtered_papers) < 5:
+            print("Scoring fallback used")
+            filtered_papers = [p for p, s in scored_papers[:10]]
+
+    print(f"After paper scoring: {len(filtered_papers)}")
     # FIXED INDENTATION ONLY
     if total_fetched == 0:
-        all_fetched = [
+        filtered_papers = [
             Paper(
                 id="demo_1",
                 title="Machine Learning Basics",
@@ -111,7 +162,7 @@ async def search(request: QueryRequest):
     faiss_store = get_faiss_store()
     embedder = get_embedder()
 
-    new_papers = paper_store.add_papers(all_fetched)
+    new_papers = paper_store.add_papers(filtered_papers)
 
     # Step 4: Embed
     if new_papers:
@@ -135,31 +186,69 @@ async def search(request: QueryRequest):
         top_n=request.max_results,
     )
 
-    # Step 6.5: Semantic Search for Analysis
-    # Use semantic search to get top papers for analysis, but keep ranked_papers for response
-    papers = all_fetched  # Keep original papers for fallback
+    # Step 6.5: Semantic Search + Reranking for Analysis and Response
+    papers = all_fetched
     try:
-        semantic_results = semantic_search(refined_query, papers, top_k=20)
-        top_papers = [item["paper"] for item in semantic_results]
-        print("Using semantic top papers:", len(top_papers))
-    except Exception as e:
-        # Fallback to original papers if semantic search fails
-        print(f"Semantic search failed: {e}, using original papers for analysis")
-        top_papers = papers[:20] if len(papers) >= 20 else papers
+        semantic_results = semantic_search(refined_query, papers, top_k=100)
+        print("Semantic candidates:", len(semantic_results))
+        filtered_results = [
+            item for item in semantic_results 
+            if item["score"] >= 0.15
+        ]
+        if len(filtered_results) < 5:
+            filtered_results = semantic_results[:15]
+        print("After semantic filter:", len(filtered_results))
+        
+        top_papers = [item["paper"] for item in filtered_results]
+        print(f"Filtered semantic papers: {len(filtered_results)}")
+        
+        top_papers = domain_filter_papers(top_papers, refined_query)
+        print(f"After domain pre-filter: {len(top_papers)}")
+        
+        # Rerank for precision filtering
+        reranked = rerank_papers(refined_query, top_papers)
+        
+        query_lower = refined_query.lower()
 
-    # Step 7: Analysis - use semantic top papers
-    analysis = analyze(top_papers, refined_query, topics)
+        if "transformer" in query_lower or "attention" in query_lower:
+            threshold = 0.05
+        else:
+            threshold = 0.1
+
+        filtered_reranked = [
+            (paper, score) for paper, score in reranked
+            if score >= threshold
+        ]
+        print("After reranker filter:", len(filtered_reranked))
+        
+        if len(filtered_reranked) < 5:
+            print("Final fallback used")
+            final_papers = [paper for paper, score in reranked[:10]]
+        else:
+            final_papers = [paper for paper, score in filtered_reranked[:10]]
+
+        print("Reranking applied. Final papers:", len(final_papers))
+    except Exception as e:
+        print(f"Reranking pipeline failed: {e}, using semantic results")
+        final_papers = top_papers[:10] if 'top_papers' in locals() else papers[:10]
+
+    # Step 7: Analysis - use reranked final papers
+    analysis = analyze(final_papers, refined_query, topics)
     analysis.refined_query = refined_query
+    
+    themes = generate_research_themes(final_papers)
+    print("Generated themes:", themes)
 
     elapsed_ms = (time.time() - start_time) * 1000
 
     return SearchResponse(
         query=request.query,
         refined_query=refined_query,
-        papers=ranked_papers,
+        papers=final_papers,
         analysis=analysis,
         total_fetched=total_fetched,
         processing_time_ms=round(elapsed_ms, 1),
+        themes=themes
     )
 
 

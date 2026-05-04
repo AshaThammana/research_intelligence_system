@@ -50,3 +50,4 @@ class SearchResponse(BaseModel):
     analysis: AnalysisResult
     total_fetched: int
     processing_time_ms: float
+    themes: Optional[List[Dict[str, Any]]] = None  # Added theme_name

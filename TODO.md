@@ -1,17 +1,8 @@
-# Query Quality Improvement - COMPLETE ✅
+# Domain Filtering Upgrade TODO
 
-## Changes:
-- Added keyword-specific expansions in `backend/agents/query_agent.py`:
-  * "federated learning" → "secure aggregation...", "privacy preserving...", "distributed model training"
-  * "privacy" → "data protection...", "differential privacy...", "confidential machine learning"
-  * "transformer" → "attention based...", "bert gpt...", "deep learning sequence..."
-- Appends expansions to cleaned query (original preserved).
-- Deduped/limited to 5 terms.
-- Preserved TOPIC_EXPANSIONS replaces.
-- refined_query flows to semantic_search, APIs.
-- Tests passed.
+- [x] Step 1: Create this TODO.md
+- [x] Step 2: Update extract_domain_keywords() in backend/core/domain_filter.py
+- [x] Step 3: Update domain_filter_reranked() in backend/core/domain_filter.py
+- [x] Step 4: Test the updated filtering logic
+- [x] Step 5: Mark complete
 
-To test locally: `python backend/test_system.py`
-Or query system with "federated learning privacy" to see **concise, deduped** refined_query (e.g., "privacy in federated learning secure aggregation differential privacy ...").
-
-Approve to proceed with code edits?"
